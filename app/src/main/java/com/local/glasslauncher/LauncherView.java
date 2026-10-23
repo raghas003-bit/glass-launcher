@@ -56,6 +56,9 @@ public class LauncherView extends View {
     // Apps never shown in the grid.
     private static final String[] HIDE_PKGS = {"me.efesser.flauncher"};
 
+    // true = cyan sci-fi HUD theme, false = night-city theme
+    private static final boolean HUD = true;
+    private static final float RING_X = 1400f, RING_Y = 420f;
     private static final float DW = 1920f;
     private static final int TW = 320, TH = 180, COLS = 4;
     private static final float DOCK_X = 96f, DOCK_Y = 730f, DOCK_GAP = 40f;
@@ -113,6 +116,12 @@ public class LauncherView extends View {
     private float s = 1f, vh = 1080f;
     private Bitmap bg, glowMask, roundMask;
     private float[] winX = new float[0], winY = new float[0], winPh = new float[0], winSp = new float[0];
+    private int[] winCol = new int[0];
+    private float[] ptX = new float[0], ptY = new float[0], ptSp = new float[0], ptR = new float[0], ptPh = new float[0];
+    private Shader scanShader;
+    private final RectF ringRect = new RectF();
+    private float[] starX = new float[0], starY = new float[0], starPh = new float[0], starSp = new float[0];
+    private static final int[] WIN_COLORS = {0xFFD2AA1E, 0xFFF5E6B0, 0xFFE08A1E};
 
     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint bgPaint = new Paint(Paint.FILTER_BITMAP_FLAG);
@@ -193,42 +202,151 @@ public class LauncherView extends View {
 
     // ------------------------------------------------------------------ scene
 
-    private void buildScene(int w, int h) {
+    private void buildHudScene(int w, int h) {
         int bw = w / 2, bh = h / 2;
         bg = Bitmap.createBitmap(bw, bh, Bitmap.Config.ARGB_8888);
         Canvas c = new Canvas(bg);
         float k = bw / DW;
         c.scale(k, k);
         Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
-        p.setShader(new LinearGradient(0, 0, 0, vh, 0xFF06070B, 0xFF1A1C2B, Shader.TileMode.CLAMP));
+        p.setShader(new LinearGradient(0, 0, 0, vh, 0xFF02050B, 0xFF08162A, Shader.TileMode.CLAMP));
         c.drawRect(0, 0, DW, vh, p);
-        p.setShader(new RadialGradient(1390, 300, 560, 0x66FAC814, 0x00FAC814, Shader.TileMode.CLAMP));
-        c.drawCircle(1390, 300, 560, p);
+        p.setShader(new RadialGradient(RING_X, RING_Y, 760, 0x3300E5FF, 0x0000E5FF, Shader.TileMode.CLAMP));
+        c.drawCircle(RING_X, RING_Y, 760, p);
+        p.setShader(null);
+        p.setStyle(Paint.Style.STROKE);
+        p.setStrokeWidth(2f);
+        p.setColor(0x1600E5FF);
+        for (float gx = 0; gx < DW; gx += 80f) c.drawLine(gx, 0, gx, vh, p);
+        for (float gy = 0; gy < vh; gy += 80f) c.drawLine(0, gy, DW, gy, p);
+        p.setStyle(Paint.Style.FILL);
+        p.setShader(new LinearGradient(0, 520, 0, vh, 0x00000000, 0x99000000, Shader.TileMode.CLAMP));
+        c.drawRect(0, 520, DW, vh, p);
+        p.setShader(new RadialGradient(DW / 2f, vh / 2f, DW * 0.62f,
+                new int[]{0x00000000, 0x00000000, 0xAA000000},
+                new float[]{0f, 0.6f, 1f}, Shader.TileMode.CLAMP));
+        c.drawRect(0, 0, DW, vh, p);
+        p.setShader(null);
+        Random r = new Random(5);
+        int n = 60;
+        ptX = new float[n]; ptY = new float[n]; ptSp = new float[n]; ptR = new float[n]; ptPh = new float[n];
+        for (int i = 0; i < n; i++) {
+            ptX[i] = r.nextFloat() * DW;
+            ptY[i] = r.nextFloat() * vh;
+            ptSp[i] = 8f + r.nextFloat() * 26f;
+            ptR[i] = 1.2f + r.nextFloat() * 2.0f;
+            ptPh[i] = r.nextFloat() * 6.28f;
+        }
+        scanShader = new LinearGradient(0, 0, 0, 90,
+                new int[]{0x0000E5FF, 0x2800E5FF, 0x0000E5FF},
+                new float[]{0f, 0.5f, 1f}, Shader.TileMode.CLAMP);
+        winX = new float[0]; winY = new float[0]; winPh = new float[0]; winSp = new float[0]; winCol = new int[0];
+        starX = new float[0]; starY = new float[0]; starPh = new float[0]; starSp = new float[0];
+    }
+
+    private void buildScene(int w, int h) {
+        if (HUD) {
+            buildHudScene(w, h);
+            return;
+        }
+        int bw = w / 2, bh = h / 2;
+        bg = Bitmap.createBitmap(bw, bh, Bitmap.Config.ARGB_8888);
+        Canvas c = new Canvas(bg);
+        float k = bw / DW;
+        c.scale(k, k);
+        Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
+        Random r = new Random(11);
+
+        // Sky: deep blue-black at the top, a faint warm glow near the horizon.
+        p.setShader(new LinearGradient(0, 0, 0, vh,
+                new int[]{0xFF03040A, 0xFF0A0C18, 0xFF191A2D, 0xFF2B2434},
+                new float[]{0f, 0.45f, 0.78f, 1f}, Shader.TileMode.CLAMP));
+        c.drawRect(0, 0, DW, vh, p);
+        p.setShader(null);
+
+        // Static stars.
+        for (int i = 0; i < 170; i++) {
+            float sx = r.nextFloat() * DW;
+            float sy = r.nextFloat() * (vh * 0.55f);
+            float sr = 0.8f + r.nextFloat() * 1.4f;
+            p.setColor(Color.argb(60 + r.nextInt(150), 255, 250, 235));
+            c.drawCircle(sx, sy, sr, p);
+        }
+        // Stars that twinkle live.
+        int ns = 46;
+        starX = new float[ns];
+        starY = new float[ns];
+        starPh = new float[ns];
+        starSp = new float[ns];
+        for (int i = 0; i < ns; i++) {
+            starX[i] = r.nextFloat() * DW;
+            starY[i] = r.nextFloat() * (vh * 0.5f);
+            starPh[i] = r.nextFloat() * 6.28f;
+            starSp[i] = 0.5f + r.nextFloat() * 1.5f;
+        }
+
+        // Moon: wide halo, soft halo, disc, faint craters.
+        p.setShader(new RadialGradient(1390, 300, 640, 0x44FAC814, 0x00FAC814, Shader.TileMode.CLAMP));
+        c.drawCircle(1390, 300, 640, p);
+        p.setShader(new RadialGradient(1390, 300, 300, 0x77FFD84A, 0x00FFD84A, Shader.TileMode.CLAMP));
+        c.drawCircle(1390, 300, 300, p);
         p.setShader(null);
         p.setColor(0xFFFAC814);
         c.drawCircle(1390, 300, 150, p);
+        p.setColor(0x22B8860B);
+        c.drawCircle(1340, 260, 34, p);
+        c.drawCircle(1442, 342, 26, p);
+        c.drawCircle(1402, 248, 16, p);
+        c.drawCircle(1332, 352, 18, p);
 
-        Random r = new Random(11);
+        // Skyline: four layers, each one hazier the further away it is.
         List<float[]> wins = new ArrayList<>();
-        skyline(c, p, r, 800f, 120, 330, 70, 150, 0xFF121319, wins, 0.20f);
-        skyline(c, p, r, 900f, 100, 260, 80, 170, 0xFF0A0A0E, wins, 0.30f);
+        skyline(c, p, r, 650f, 90, 210, 60, 130, 0xFF1B1D2C, null, 0f);
+        haze(c, p, 650f, 0x3A3347, 0x66);
+        skyline(c, p, r, 740f, 100, 250, 70, 140, 0xFF151726, wins, 0.15f);
+        haze(c, p, 740f, 0x2E2A3C, 0x55);
+        skyline(c, p, r, 830f, 110, 300, 70, 150, 0xFF101118, wins, 0.20f);
+        haze(c, p, 830f, 0x1E1B28, 0x44);
+        skyline(c, p, r, 920f, 100, 250, 80, 170, 0xFF08080C, wins, 0.30f);
 
-        int n = Math.min(wins.size(), 260);
+        // Darken the lower part so the dock and tiles read clearly.
+        p.setShader(new LinearGradient(0, 520, 0, vh, 0x00000000, 0x99000000, Shader.TileMode.CLAMP));
+        c.drawRect(0, 520, DW, vh, p);
+        // Soft vignette in the corners.
+        p.setShader(new RadialGradient(DW / 2f, vh / 2f, DW * 0.62f,
+                new int[]{0x00000000, 0x00000000, 0xAA000000},
+                new float[]{0f, 0.6f, 1f}, Shader.TileMode.CLAMP));
+        c.drawRect(0, 0, DW, vh, p);
+        p.setShader(null);
+
+        int n = Math.min(wins.size(), 300);
         winX = new float[n];
         winY = new float[n];
         winPh = new float[n];
         winSp = new float[n];
+        winCol = new int[n];
         for (int i = 0; i < n; i++) {
             float[] wv = wins.get(i);
             winX[i] = wv[0];
             winY[i] = wv[1];
             winPh[i] = r.nextFloat() * 6.28f;
             winSp[i] = 0.6f + r.nextFloat() * 1.8f;
+            float pick = r.nextFloat();
+            winCol[i] = pick < 0.6f ? WIN_COLORS[0] : (pick < 0.85f ? WIN_COLORS[1] : WIN_COLORS[2]);
         }
+    }
+
+    private void haze(Canvas c, Paint p, float base, int rgb, int maxAlpha) {
+        int clear = rgb & 0xFFFFFF;
+        p.setShader(new LinearGradient(0, base - 260f, 0, base + 120f,
+                clear, (maxAlpha << 24) | clear, Shader.TileMode.CLAMP));
+        c.drawRect(0, base - 260f, DW, vh + 10f, p);
+        p.setShader(null);
     }
 
     private void skyline(Canvas c, Paint p, Random r, float base, int hmin, int hmax,
                          int wmin, int wmax, int color, List<float[]> wins, float prob) {
+        p.setShader(null);
         p.setColor(color);
         float x = -20f;
         while (x < DW) {
@@ -239,12 +357,14 @@ public class LauncherView extends View {
             if (r.nextFloat() < 0.3f) {
                 c.drawRect(x + w / 2f - 4f, top - 30f - r.nextInt(60), x + w / 2f + 4f, top, p);
             }
-            int cols = (int) ((w - 24f) / 22f);
-            int rows = (int) ((h - 30f) / 30f);
-            for (int cx = 0; cx < cols; cx++) {
-                for (int cy = 0; cy < rows; cy++) {
-                    if (r.nextFloat() < prob * 0.5f) {
-                        wins.add(new float[]{x + 14f + cx * 22f, top + 20f + cy * 30f});
+            if (wins != null) {
+                int cols = (int) ((w - 24f) / 22f);
+                int rows = (int) ((h - 30f) / 30f);
+                for (int cx = 0; cx < cols; cx++) {
+                    for (int cy = 0; cy < rows; cy++) {
+                        if (r.nextFloat() < prob * 0.5f) {
+                            wins.add(new float[]{x + 14f + cx * 22f, top + 20f + cy * 30f});
+                        }
                     }
                 }
             }
@@ -654,11 +774,77 @@ public class LauncherView extends View {
         if (running) postInvalidateOnAnimation();
     }
 
-    private void drawWindows(Canvas c, float t) {
+    private void drawHud(Canvas c, float t) {
         paint.setShader(null);
+        paint.setStyle(Paint.Style.FILL);
+        for (int i = 0; i < ptX.length; i++) {
+            float y = ptY[i] - t * ptSp[i];
+            y = y - (float) Math.floor(y / vh) * vh;
+            float a = 0.25f + 0.55f * (0.5f + 0.5f * (float) Math.sin(t * 1.3f + ptPh[i]));
+            paint.setColor(Color.argb((int) (a * 255f), 0, 229, 255));
+            c.drawCircle(ptX[i], y, ptR[i], paint);
+        }
+        paint.setStyle(Paint.Style.STROKE);
+        // slowly turning tick ring
+        c.save();
+        c.rotate(t * 3f, RING_X, RING_Y);
+        paint.setStrokeWidth(2f);
+        paint.setColor(0x6600E5FF);
+        for (int i = 0; i < 72; i++) {
+            double ang = i * Math.PI * 2.0 / 72.0;
+            float r1 = (i % 6 == 0) ? 316f : 326f;
+            float cs = (float) Math.cos(ang), sn = (float) Math.sin(ang);
+            c.drawLine(RING_X + cs * r1, RING_Y + sn * r1, RING_X + cs * 340f, RING_Y + sn * 340f, paint);
+        }
+        c.restore();
+        // outer dashed arcs
+        ringRect.set(RING_X - 290f, RING_Y - 290f, RING_X + 290f, RING_Y + 290f);
+        paint.setStrokeWidth(4f);
+        paint.setColor(0xAA00E5FF);
+        for (int i = 0; i < 3; i++) c.drawArc(ringRect, t * 12f + i * 120f, 80f, false, paint);
+        // middle arcs, turning the other way
+        ringRect.set(RING_X - 230f, RING_Y - 230f, RING_X + 230f, RING_Y + 230f);
+        paint.setStrokeWidth(3f);
+        paint.setColor(0x8800E5FF);
+        for (int i = 0; i < 6; i++) c.drawArc(ringRect, -t * 20f + i * 60f, 30f, false, paint);
+        // thick slow arcs
+        ringRect.set(RING_X - 170f, RING_Y - 170f, RING_X + 170f, RING_Y + 170f);
+        paint.setStrokeWidth(10f);
+        paint.setColor(0x4400E5FF);
+        for (int i = 0; i < 2; i++) c.drawArc(ringRect, t * 8f + i * 180f, 120f, false, paint);
+        // inner circle and pulsing core
+        paint.setStrokeWidth(2f);
+        paint.setColor(0x6600E5FF);
+        c.drawCircle(RING_X, RING_Y, 110f, paint);
+        paint.setStyle(Paint.Style.FILL);
+        float pulse = 0.5f + 0.5f * (float) Math.sin(t * 1.6f);
+        paint.setColor(Color.argb((int) ((0.12f + 0.22f * pulse) * 255f), 0, 229, 255));
+        c.drawCircle(RING_X, RING_Y, 70f + 10f * pulse, paint);
+        // scanning line
+        float sy = (t * 90f) % (vh + 90f) - 90f;
+        paint.setShader(scanShader);
+        c.save();
+        c.translate(0f, sy);
+        c.drawRect(0f, 0f, DW, 90f, paint);
+        c.restore();
+        paint.setShader(null);
+    }
+
+    private void drawWindows(Canvas c, float t) {
+        if (HUD) {
+            drawHud(c, t);
+            return;
+        }
+        paint.setShader(null);
+        for (int i = 0; i < starX.length; i++) {
+            float a = 0.25f + 0.75f * (0.5f + 0.5f * (float) Math.sin(t * starSp[i] + starPh[i]));
+            paint.setColor(Color.argb((int) (a * 255f), 255, 250, 235));
+            c.drawCircle(starX[i], starY[i], 1.7f, paint);
+        }
         for (int i = 0; i < winX.length; i++) {
             float a = 0.20f + 0.80f * (0.5f + 0.5f * (float) Math.sin(t * winSp[i] + winPh[i]));
-            paint.setColor(Color.argb((int) (a * 255f), 0xD2, 0xAA, 0x1E));
+            int col = winCol[i];
+            paint.setColor(Color.argb((int) (a * 255f), Color.red(col), Color.green(col), Color.blue(col)));
             c.drawRect(winX[i], winY[i], winX[i] + 7f, winY[i] + 10f, paint);
         }
     }
@@ -673,6 +859,16 @@ public class LauncherView extends View {
     }
 
     private void drawHeader(Canvas c) {
+        if (HUD) {
+            textPaint.setLetterSpacing(0.25f);
+            drawText(c, greet.toUpperCase(Locale.getDefault()), 96f, 118f, 28f, regular, 0xFF4FE3FF, Paint.Align.LEFT);
+            textPaint.setLetterSpacing(0f);
+            drawText(c, clockStr, 90f, 232f, 118f, thin, 0xFFE6FBFF, Paint.Align.LEFT);
+            textPaint.setLetterSpacing(0.12f);
+            drawText(c, dateStr.toUpperCase(Locale.getDefault()), 96f, 292f, 26f, light, 0xAA9FEFFF, Paint.Align.LEFT);
+            textPaint.setLetterSpacing(0f);
+            return;
+        }
         drawText(c, greet, 96f, 118f, 34f, light, 0xCCFFFFFF, Paint.Align.LEFT);
         drawText(c, clockStr, 90f, 232f, 118f, thin, Color.WHITE, Paint.Align.LEFT);
         drawText(c, dateStr, 96f, 292f, 30f, light, 0x99FFFFFF, Paint.Align.LEFT);
@@ -695,9 +891,20 @@ public class LauncherView extends View {
         }
         int n = dock.size();
         float bw = n * TW + (n - 1) * DOCK_GAP + 60f;
-        paint.setColor(0x22FFFFFF);
         rect.set(DOCK_X, DOCK_Y - 30f, DOCK_X + bw, DOCK_Y + TH + 80f);
-        c.drawRoundRect(rect, 44f, 44f, paint);
+        if (HUD) {
+            paint.setStyle(Paint.Style.FILL);
+            paint.setColor(0x1100E5FF);
+            c.drawRoundRect(rect, 14f, 14f, paint);
+            paint.setStyle(Paint.Style.STROKE);
+            paint.setStrokeWidth(2f);
+            paint.setColor(0x6600E5FF);
+            c.drawRoundRect(rect, 14f, 14f, paint);
+            paint.setStyle(Paint.Style.FILL);
+        } else {
+            paint.setColor(0x22FFFFFF);
+            c.drawRoundRect(rect, 44f, 44f, paint);
+        }
         for (int i = 0; i < n; i++) drawTile(c, dock.get(i), zone == Z_DOCK && i == dockIdx);
     }
 
@@ -735,8 +942,19 @@ public class LauncherView extends View {
 
     private void drawTopBar(Canvas c) {
         for (int i = 0; i < 2; i++) {
-            paint.setColor(0x33FFFFFF);
-            c.drawRoundRect(pill[i], 32f, 32f, paint);
+            if (HUD) {
+                paint.setStyle(Paint.Style.FILL);
+                paint.setColor(0x2200E5FF);
+                c.drawRoundRect(pill[i], 12f, 12f, paint);
+                paint.setStyle(Paint.Style.STROKE);
+                paint.setStrokeWidth(2f);
+                paint.setColor(0x8800E5FF);
+                c.drawRoundRect(pill[i], 12f, 12f, paint);
+                paint.setStyle(Paint.Style.FILL);
+            } else {
+                paint.setColor(0x33FFFFFF);
+                c.drawRoundRect(pill[i], 32f, 32f, paint);
+            }
             drawText(c, pillText[i], pill[i].centerX(), pill[i].centerY() + 10f, 30f, regular,
                     Color.WHITE, Paint.Align.CENTER);
         }
@@ -745,6 +963,28 @@ public class LauncherView extends View {
     private void drawHighlight(Canvas c) {
         if (!hlInit) return;
         rect.set(hl[0].x, hl[1].x, hl[2].x, hl[3].x);
+        if (HUD) {
+            paint.setStyle(Paint.Style.FILL);
+            paint.setColor(0x1A00E5FF);
+            c.drawRect(rect, paint);
+            paint.setStyle(Paint.Style.STROKE);
+            paint.setStrokeWidth(1.5f);
+            paint.setColor(0x5500E5FF);
+            c.drawRect(rect, paint);
+            paint.setStrokeWidth(5f);
+            paint.setColor(0xFF00E5FF);
+            float L = 38f;
+            c.drawLine(rect.left, rect.top, rect.left + L, rect.top, paint);
+            c.drawLine(rect.left, rect.top, rect.left, rect.top + L, paint);
+            c.drawLine(rect.right, rect.top, rect.right - L, rect.top, paint);
+            c.drawLine(rect.right, rect.top, rect.right, rect.top + L, paint);
+            c.drawLine(rect.left, rect.bottom, rect.left + L, rect.bottom, paint);
+            c.drawLine(rect.left, rect.bottom, rect.left, rect.bottom - L, paint);
+            c.drawLine(rect.right, rect.bottom, rect.right - L, rect.bottom, paint);
+            c.drawLine(rect.right, rect.bottom, rect.right, rect.bottom - L, paint);
+            paint.setStyle(Paint.Style.FILL);
+            return;
+        }
         paint.setStyle(Paint.Style.FILL);
         paint.setColor(0x33FFFFFF);
         c.drawRoundRect(rect, 30f, 30f, paint);
